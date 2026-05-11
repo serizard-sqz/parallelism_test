@@ -7,20 +7,23 @@ Wan 2.2 T2V/I2V 모델에서 sequence parallelism, FP8 quantization, `torch.comp
 - `wan_t2v_sp_test.py`: Text-to-Video 벤치마크
 - `wan_i2v_sp_test.py`: Image-to-Video 벤치마크
 - `samples/i2v/sample_i2v.avif`: I2V 기본 입력 이미지
-- `requirements.txt`: 실행 의존성 목록
+- `pyproject.toml`: 실행 의존성 선언
+- `uv.lock`: 재현 가능한 잠금 의존성
 
 ## 설치
 
 ```bash
-pip install -r requirements.txt
+uv sync --locked
 ```
+
+의존성은 `pyproject.toml`에 선언하고 `uv.lock`으로 고정합니다. 의존성을 변경한 뒤에는 `uv lock`을 실행해 잠금 파일을 갱신하고, 설치/실행 환경에서는 `uv sync --locked`로 잠금 파일과 일치하는 환경을 구성합니다.
 
 의존성 import는 파일 상단에서 바로 수행됩니다. 패키지가 없으면 파이썬 import 에러가 그대로 출력됩니다.
 
 ## T2V 실행
 
 ```bash
-python wan_t2v_sp_test.py \
+uv run --locked python wan_t2v_sp_test.py \
   --prompt "A cinematic shot of a mountain lake at sunrise" \
   --resolution 480p \
   --warmup-runs 1 \
@@ -31,7 +34,7 @@ python wan_t2v_sp_test.py \
 ## I2V 실행
 
 ```bash
-python wan_i2v_sp_test.py \
+uv run --locked python wan_i2v_sp_test.py \
   --image samples/i2v/sample_i2v.avif \
   --prompt "Animate the image with gentle camera motion" \
   --resolution 480p \
@@ -45,7 +48,7 @@ python wan_i2v_sp_test.py \
 `--sp-backend` 사용 시 `torchrun`으로 실행합니다. USP는 `--ulysses-degree`와 `--ring-degree`를 명시합니다.
 
 ```bash
-torchrun --nproc_per_node=4 wan_t2v_sp_test.py \
+uv run --locked torchrun --nproc_per_node=4 wan_t2v_sp_test.py \
   --prompt "A futuristic city flythrough" \
   --resolution 720p \
   --sp-backend usp \

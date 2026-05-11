@@ -1,0 +1,31 @@
+[project]
+name = "wan-sequence-parallelism-benchmark"
+version = "0.1.0"
+description = "Wan 2.2 sequence parallelism benchmark scripts."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate",
+    "av",
+    "diffusers @ git+https://github.com/huggingface/diffusers.git",
+    "imageio",
+    "imageio-ffmpeg",
+    "peft",
+    "pillow",
+    "safetensors",
+    "torch==2.11.*",
+    "torchao==0.17.0",
+    "transformers==5.7.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchao = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
