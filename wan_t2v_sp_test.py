@@ -67,6 +67,23 @@ def parse_args():
     return parser.parse_args()
 
 
+def context_parallel_degrees(args):
+    """Ring/Ulysses degrees for ContextParallelConfig, log paths, and export filenames."""
+    ring_degree = 1
+    ulysses_degree = 1
+    if args.sp_backend != "none":
+        if args.sp_backend == "ring":
+            ring_degree = args.ring_degree
+            ulysses_degree = 1
+        elif args.sp_backend == "ulysses":
+            ring_degree = 1
+            ulysses_degree = args.ulysses_degree
+        else:
+            ulysses_degree = args.ulysses_degree
+            ring_degree = args.ring_degree
+    return ring_degree, ulysses_degree
+
+
 def main():
     args = parse_args()
     script_kind = "t2v"
@@ -78,9 +95,23 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_file = Path(args.log_file) if args.log_file else output_dir / f"{script_kind}_latency_{args.sp_backend}_{args.resolution}.jsonl"
+    ring_degree, ulysses_degree = context_parallel_degrees(args)
+    log_file = (
+        Path(args.log_file)
+        if args.log_file
+        else output_dir / f"{script_kind}_latency_{args.sp_backend}_ring{ring_degree}_ulysses{ulysses_degree}_{args.resolution}.jsonl"
+    )
     config = vars(args).copy()
-    config.update({"script": script_kind, "height": height, "width": width, "log_file": str(log_file)})
+    config.update(
+        {
+            "script": script_kind,
+            "height": height,
+            "width": width,
+            "log_file": str(log_file),
+            "ring_degree": ring_degree,
+            "ulysses_degree": ulysses_degree,
+        }
+    )
     print("CONFIG " + json.dumps(config, sort_keys=True, ensure_ascii=False))
 
     if args.dry_run:
@@ -133,15 +164,6 @@ def main():
             module.set_attention_backend(args.attention_backend)
 
     if args.sp_backend != "none":
-        if args.sp_backend == "ring":
-            ring_degree = args.ring_degree
-            ulysses_degree = 1
-        elif args.sp_backend == "ulysses":
-            ring_degree = 1
-            ulysses_degree = args.ulysses_degree
-        else:
-            ulysses_degree = args.ulysses_degree
-            ring_degree = args.ring_degree
         cp_config = ContextParallelConfig(ring_degree=ring_degree, ulysses_degree=ulysses_degree)
         for module_name, module in modules:
             module.enable_parallelism(config=cp_config)
@@ -166,7 +188,7 @@ def main():
             for block_index, block in enumerate(module.blocks):
                 module.blocks[block_index] = torch.compile(block, mode="default", dynamic=True, fullgraph=False)
                 compiled_blocks += 1
-            print("COMPILE " + json.dumps({"module": module_name, "enabled": True, "target": "blocks", "compiled_blocks": compiled_blocks, "mode": "default", "dynamic": True, "fullgraph": True}, sort_keys=True))
+            print("COMPILE " + json.dumps({"module": module_name, "enabled": True, "target": "blocks", "compiled_blocks": compiled_blocks, "mode": "default", "dynamic": True, "fullgraph": False}, sort_keys=True))
     else:
         print("COMPILE " + json.dumps({"enabled": False}, sort_keys=True))
 
@@ -174,7 +196,7 @@ def main():
     log_file.parent.mkdir(parents=True, exist_ok=True)
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats(device)
-    fieldnames = ["event", "script", "model_id", "lora_repo", "lora_subfolder", "lora_weight_name", "sp_backend", "world_size", "rank", "resolution", "height", "width", "num_frames", "dtype", "compile", "fp8", "run_index", "latency_seconds", "output_path", "seed", "warmup_runs", "measured_runs", "mean_latency_seconds", "median_latency_seconds", "min_latency_seconds", "max_latency_seconds", "log_file", "cuda_peak_memory_allocated_bytes", "cuda_peak_memory_reserved_bytes"]
+    fieldnames = ["event", "script", "model_id", "lora_repo", "lora_subfolder", "lora_weight_name", "sp_backend", "ring_degree", "ulysses_degree", "world_size", "rank", "resolution", "height", "width", "num_frames", "dtype", "compile", "fp8", "run_index", "latency_seconds", "output_path", "seed", "warmup_runs", "measured_runs", "mean_latency_seconds", "median_latency_seconds", "min_latency_seconds", "max_latency_seconds", "log_file", "cuda_peak_memory_allocated_bytes", "cuda_peak_memory_reserved_bytes"]
     if rank == 0:
         if log_file.suffix.lower() == ".csv":
             with log_file.open("a", encoding="utf-8", newline="") as fh:
@@ -198,9 +220,12 @@ def main():
         measured_index = run_index - args.warmup_runs
         if phase == "benchmark" and rank == 0:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            output_path = output_dir / f"wan_{script_kind}_{args.resolution}_{args.sp_backend}_seed{args.seed}_run{measured_index}_{stamp}.mp4"
+            output_path = output_dir / (
+                f"wan_{script_kind}_{args.resolution}_{args.sp_backend}_"
+                f"ring{ring_degree}_ulysses{ulysses_degree}_seed{args.seed}_run{measured_index}_{stamp}.mp4"
+            )
             export_to_video(frames_for_export(frames), str(output_path), fps=args.fps)
-            record = {"event": "latency", "script": script_kind, "model_id": args.model_id, "lora_repo": args.lora_repo, "lora_subfolder": args.lora_subfolder, "lora_weight_name": args.lora_weight_name, "sp_backend": args.sp_backend, "world_size": world_size, "rank": rank, "resolution": args.resolution, "height": height, "width": width, "num_frames": args.num_frames, "dtype": args.dtype, "compile": args.compile, "fp8": args.fp8, "run_index": measured_index, "latency_seconds": latency, "output_path": str(output_path), "seed": args.seed + run_index, "cuda_peak_memory_allocated_bytes": torch.cuda.max_memory_allocated(device), "cuda_peak_memory_reserved_bytes": torch.cuda.max_memory_reserved(device)}
+            record = {"event": "latency", "script": script_kind, "model_id": args.model_id, "lora_repo": args.lora_repo, "lora_subfolder": args.lora_subfolder, "lora_weight_name": args.lora_weight_name, "sp_backend": args.sp_backend, "ring_degree": ring_degree, "ulysses_degree": ulysses_degree, "world_size": world_size, "rank": rank, "resolution": args.resolution, "height": height, "width": width, "num_frames": args.num_frames, "dtype": args.dtype, "compile": args.compile, "fp8": args.fp8, "run_index": measured_index, "latency_seconds": latency, "output_path": str(output_path), "seed": args.seed + run_index, "cuda_peak_memory_allocated_bytes": torch.cuda.max_memory_allocated(device), "cuda_peak_memory_reserved_bytes": torch.cuda.max_memory_reserved(device)}
             run_records.append(record)
             print("LATENCY " + json.dumps(record, sort_keys=True, ensure_ascii=False))
             if log_file.suffix.lower() == ".csv":
